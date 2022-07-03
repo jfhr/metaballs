@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>Metaballs</title>
+    <style>
+        body {
+            height: 100vh;
+            width: 100vw;
+            margin: 0;
+            background-color: #101012;
+            color: #ffc0cb;
+            font-family: "Open Sans", -apple-system, BlinkMaxSystemFont, "Segoe UI", sans-serif;
+        }
+        .container {
+            display: flex;
+            align-items: center;
+            justify-content: space-evenly;
+            padding-top: 1rem;
+            padding-bottom: 1rem;
+        }
+        button {
+            background-color: #202024;
+            color: #ffc0cb;
+            border: none;
+            padding: 0.4rem 0.8rem;
+        }
+        button:hover {
+            background-color: #303036;
+        }
+        canvas {
+            border: 1px solid #ffc0cb;
+        }
+        a {
+            color: #ffc0cb;
+        }
+    </style>
+    <script>
+        const SIZE = Math.floor(Math.min(visualViewport.width, visualViewport.height) * 0.8);
+        const REFERENCE = 2;
+        const STEP = SIZE / 80;
+
+        const R = [];
+        const X = [];
+        const Y = [];
+        const ALPHA = [];
+
+        function project(x) {
+            x /= SIZE / REFERENCE / 2
+            x -= REFERENCE
+            return x
+        }
+
+        function randomInitialConditions() {
+            for (let i = 0; i < 6; i++) {
+                R[i] = Math.random() * 0.375 + 0.125;
+                X[i] = Math.random() * 3 - 1.5;
+                Y[i] = Math.random() * 3 - 1.5;
+                ALPHA[i] = Math.PI * Math.random() * 2;
+            }
+        }
+
+        function f(x, y) {
+            x = project(x)
+            y = -project(y)
+            let sum = 0;
+            for (let i = 0; i < R.length; i++) {
+                sum += R[i]**2 / ((x - X[i])**2 + (y - Y[i])**2);
+            }
+            return sum - 1;
+        }
+
+        window["<3"] = function() {
+            f = function(x, y) {
+                x = project(x)
+                y = -project(y)
+                return (x**2 + y**2 - 1)**3 - (x**2 * y**3)
+            }
+        }
+
+        function isInside(x, y) {
+            if (f(x, y) < 0) {
+                return 1;
+            }
+            return 0;
+        }
+
+        function drawPathBetween(ctx, x1, y1, x2, y2) {
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+        }
+
+        function linearInterpolation(x1, y1, x2, y2) {
+            const f1 = f(x1, y1);
+            const f2 = f(x2, y2);
+            const p = Math.abs(f1) / (Math.abs(f1) + Math.abs(f2));
+            return [x1 + p * (x2 - x1), y1 + p * (y2 - y1)];
+        }
+
+        function drawIsolinesInsideSquare(ctx, x1, y1, x2, y2) {
+            const a = [x1, y1];
+            const b = [x2, y1];
+            const c = [x2, y2];
+            const d = [x1, y2];
+
+            let cfg = 0;
+            cfg |= isInside(...d);
+            cfg <<= 1;
+            cfg |= isInside(...c);
+            cfg <<= 1;
+            cfg |= isInside(...b);
+            cfg <<= 1;
+            cfg |= isInside(...a);
+
+            function drawPathBetweenEdges(e1from, e1to, e2from, e2to) {
+                drawPathBetween(ctx,
+                    ...linearInterpolation(...e1from, ...e1to),
+                    ...linearInterpolation(...e2from, ...e2to),
+                );
+            }
+
+            switch (cfg) {
+                case 1:
+                case 14:
+                    drawPathBetweenEdges(a, b, a, d);
+                    break;
+                case 2:
+                case 13:
+                    drawPathBetweenEdges(a, b, b, c);
+                    break;
+                case 3:
+                case 12:
+                    drawPathBetweenEdges(a, d, b, c);
+                    break;
+                case 4:
+                case 11:
+                    drawPathBetweenEdges(b, c, d, c);
+                    break;
+                case 5:
+                    drawPathBetweenEdges(a, b, b, d);
+                    drawPathBetweenEdges(b, c, d, c);
+                    break;
+                case 6:
+                case 9:
+                    drawPathBetweenEdges(a, b, d, c);
+                    break;
+                case 7:
+                case 8:
+                    drawPathBetweenEdges(a, d, d, c);
+                    break;
+                case 10:
+                    drawPathBetweenEdges(a, b, b, c);
+                    drawPathBetweenEdges(a, d, d, c);
+                    break;
+            }
+        }
+
+        function drawMetaballs(ctx) {
+            for (let x = 0; x < SIZE; x += STEP) {
+                for (let y = 0; y < SIZE; y += STEP) {
+                    drawIsolinesInsideSquare(ctx, x, y, x + STEP, y + STEP)
+                }
+            }
+        }
+
+        function moveMetaballWithAngle(i, distance, retry=2) {
+            const deltaX = Math.cos(ALPHA[i]) * distance;
+            const deltaY = Math.sin(ALPHA[i]) * distance;
+            if (X[i] + deltaX + R[i] > REFERENCE || X[i] + deltaX - R[i] < -REFERENCE) {
+                if (retry > 0) {
+                    ALPHA[i] = Math.PI - ALPHA[i];
+                    moveMetaballWithAngle(i, distance, retry - 1);
+                }
+            }
+
+            if (Y[i] + deltaY + R[i] > REFERENCE || Y[i] + deltaY - R[i] < -REFERENCE) {
+                if (retry > 0) {
+                    ALPHA[i] = - ALPHA[i];
+                    moveMetaballWithAngle(i, distance, retry - 1);
+                }
+            }
+
+            X[i] += deltaX;
+            Y[i] += deltaY;
+        }
+
+        function moveMetaballs(by) {
+            const distance = by / 1_000 / 3;
+
+            for (let i = 0; i < R.length; i++) {
+                moveMetaballWithAngle(i, distance);
+            }
+        }
+
+        function clearCanvas(ctx) {
+            ctx.clearRect(0, 0, SIZE, SIZE);
+        }
+
+        function animation(ctx) {
+            let lastFrameTimestamp = 0;
+            let frames = 0;
+            let framesTime = 0;
+
+            function frame(timestamp) {
+                const delta = timestamp - lastFrameTimestamp;
+                lastFrameTimestamp = timestamp;
+
+                frames++;
+                framesTime += delta;
+                if (framesTime >= 1000) {
+                    const fps = Math.round(frames / (framesTime / 1000));
+                    document.getElementById('fps').innerText = `${fps} fps`;
+                    frames = 0;
+                    framesTime = 0;
+                }
+
+                if (delta > 0) {
+                    clearCanvas(ctx);
+                    moveMetaballs(delta);
+                    drawMetaballs(ctx);
+                }
+                requestAnimationFrame(frame);
+            }
+            return frame;
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            /** @type {HTMLCanvasElement} */
+            const canvas = document.getElementById('canvas');
+            canvas.height
+            canvas.height = SIZE;
+            canvas.width = SIZE;
+            canvas.style.height = `${SIZE}px`;
+            canvas.style.width = `${SIZE}px`;
+
+            /** @type {CanvasRenderingContext2D} */
+            const ctx = canvas.getContext('2d');
+            ctx.strokeStyle = '#ffc0cb';
+
+            randomInitialConditions();
+            animation(ctx)(0);
+        });
+    </script>
+</head>
+<body>
+
+<header class="container">
+    <span id="fps">0 fps</span>
+    <button onclick="randomInitialConditions()">randomize</button>
+</header>
+<main class="container">
+    <canvas id="canvas"></canvas>
+</main>
+<footer class="container">
+    <span>made with <span ondblclick="window['<3']()"><3</span> by jfhr</span>
+    <a href="https://creativecommons.org/publicdomain/zero/1.0/legalcode" rel="license">released under cc0</a>
+</footer>
+
+</body>
+</html>
